@@ -14,7 +14,7 @@ body{background:var(--bg);color:var(--text);font-family:'Share Tech Mono',monosp
 #three-canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
 #hand-overlay{position:absolute;inset:0;pointer-events:none}
 #cam-canvas{position:absolute;bottom:16px;left:16px;width:176px;height:132px;border:1px solid var(--border);border-radius:3px;opacity:.8}
-video{display:none}
+video{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;z-index:-1}
 .corner{position:absolute;width:18px;height:18px;pointer-events:none}
 #ctlr{top:10px;left:10px;border-top:1px solid var(--cyan);border-left:1px solid var(--cyan)}
 #ctrr{top:10px;right:10px;border-top:1px solid var(--cyan);border-right:1px solid var(--cyan)}
@@ -400,16 +400,25 @@ async function startApp(){
     setProgress(80);
     log('Chargement du modèle IA (première fois ~10s)...');
 
-    let lastVideoTime = -1;
+    let isProcessing = false;
+    let hiddenCanvas = document.createElement('canvas');
+    let hiddenCtx = hiddenCanvas.getContext('2d', { willReadFrequently: true });
+
     async function cameraLoop() {
-      if (!video.paused && !video.ended) {
-        if (video.currentTime !== lastVideoTime) {
-          lastVideoTime = video.currentTime;
+      if (!video.paused && !video.ended && video.readyState >= 2 && video.videoWidth > 0) {
+        if (!isProcessing) {
+          isProcessing = true;
           try {
-            await hands.send({ image: video });
+            if (hiddenCanvas.width !== video.videoWidth) {
+              hiddenCanvas.width = video.videoWidth;
+              hiddenCanvas.height = video.videoHeight;
+            }
+            hiddenCtx.drawImage(video, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+            await hands.send({ image: hiddenCanvas });
           } catch (e) {
             console.error("Erreur Hands:", e);
           }
+          isProcessing = false;
         }
       }
       requestAnimationFrame(cameraLoop);

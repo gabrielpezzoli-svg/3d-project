@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>HAND CAD 3D</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
@@ -354,9 +355,6 @@ async function startApp(){
     log('Chargement MediaPipe Hands...');
     setProgress(10);
     await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js');
-    setProgress(30);
-    log('Chargement Camera Utils...');
-    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js');
     setProgress(50);
     log('Initialisation du modèle de détection...');
 
@@ -384,22 +382,39 @@ async function startApp(){
     setProgress(65);
     log('Accès à la caméra...');
 
-    // Request camera first
-    const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
-    video.srcObject=stream;
-    await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=rej;setTimeout(rej,5000,new Error('timeout video'));});
+    // Configuration plus flexible pour mobiles
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    
+    await new Promise((res, rej) => {
+      video.onloadedmetadata = () => {
+        video.play().then(res).catch(rej);
+      };
+      video.onerror = rej;
+      setTimeout(rej, 8000, new Error('timeout video'));
+    });
 
     setProgress(80);
     log('Chargement du modèle IA (première fois ~10s)...');
 
-    // Use Camera util
-    const mpCam=new Camera(video,{
-      onFrame:async()=>{await hands.send({image:video});},
-      width:640,height:480
-    });
-
-    // Override avec le stream existant pour éviter un double accès
-    await mpCam.start();
+    let lastVideoTime = -1;
+    async function cameraLoop() {
+      if (!video.paused && !video.ended) {
+        if (video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          try {
+            await hands.send({ image: video });
+          } catch (e) {
+            console.error("Erreur Hands:", e);
+          }
+        }
+      }
+      requestAnimationFrame(cameraLoop);
+    }
+    cameraLoop();
 
     setProgress(100);
     log('Système prêt!');

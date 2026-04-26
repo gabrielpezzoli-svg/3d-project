@@ -48,20 +48,34 @@ video{display:none}
 .btn:hover{border-color:var(--cyan);color:var(--cyan)}
 .btn.red:hover{border-color:var(--red);color:var(--red)}
 .hint{font-size:10px;color:var(--dim);line-height:1.6}
-#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:18px;transition:opacity .8s}
+/* Loading screen */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:20px}
 .lt{font-family:'Rajdhani',sans-serif;font-size:52px;color:var(--cyan);letter-spacing:10px}
-.lbo{width:280px;height:2px;background:var(--border)}
-.lbi{height:100%;background:var(--cyan);width:0%;transition:width .4s}
-.lm{font-size:11px;color:var(--dim);letter-spacing:2px}
+#start-btn{padding:14px 40px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-family:'Share Tech Mono',monospace;font-size:14px;cursor:pointer;letter-spacing:4px;text-transform:uppercase;transition:all .3s}
+#start-btn:hover{background:rgba(0,212,255,.1);box-shadow:0 0 20px rgba(0,212,255,.2)}
+.lbo{width:300px;height:2px;background:var(--border);display:none}
+.lbi{height:100%;background:var(--cyan);width:0%;transition:width .3s}
+#lmsg{font-size:11px;color:var(--dim);letter-spacing:2px;display:none}
+#lerr{font-size:11px;color:var(--red);letter-spacing:1px;display:none;max-width:340px;text-align:center;line-height:1.6}
+#retry-btn{padding:8px 20px;border:1px solid var(--red);background:transparent;color:var(--red);font-family:'Share Tech Mono',monospace;font-size:11px;cursor:pointer;display:none;letter-spacing:2px}
+#retry-btn:hover{background:rgba(255,45,85,.1)}
 </style>
 </head>
 <body>
+
+<!-- Loading screen -->
 <div id="loading">
   <div class="lt">HAND CAD</div>
-  <div class="lbo"><div class="lbi" id="lbi"></div></div>
-  <div class="lm" id="lmsg">INITIALIZING...</div>
+  <div style="font-size:11px;color:var(--dim);letter-spacing:2px">GESTURAL 3D MODELING v2.0</div>
+  <button id="start-btn" onclick="startApp()">▶ DÉMARRER</button>
+  <div class="lbo" id="lbo"><div class="lbi" id="lbi"></div></div>
+  <div id="lmsg"></div>
+  <div id="lerr"></div>
+  <button id="retry-btn" onclick="location.reload()">↺ RÉESSAYER</button>
 </div>
-<video id="video" autoplay playsinline></video>
+
+<video id="video" autoplay playsinline muted></video>
+
 <div id="app">
   <div id="viewport">
     <canvas id="three-canvas"></canvas>
@@ -94,9 +108,9 @@ video{display:none}
       <div class="sec">■ GESTES</div>
       <div class="glist">
         <div class="gi" id="g-cursor"><div class="gi-ico">☝️</div><div><div class="gi-n">CURSEUR</div><div class="gi-d">Index levé — déplacer le curseur 3D</div></div></div>
-        <div class="gi" id="g-place"><div class="gi-ico">🤏</div><div><div class="gi-n">PLACER CUBES</div><div class="gi-d">Pincer + étirer dans une direction → relâcher pour placer la rangée</div></div></div>
+        <div class="gi" id="g-place"><div class="gi-ico">🤏</div><div><div class="gi-n">PLACER CUBES</div><div class="gi-d">Pincer + étirer → relâcher pour placer</div></div></div>
         <div class="gi" id="g-rotate"><div class="gi-ico">🖐️</div><div><div class="gi-n">ROTATION VUE</div><div class="gi-d">Paume ouverte — pivoter la caméra</div></div></div>
-        <div class="gi" id="g-undo"><div class="gi-ico">✊</div><div><div class="gi-n">ANNULER</div><div class="gi-d">Poing fermé + rotation du poignet — supprimer dernier groupe</div></div></div>
+        <div class="gi" id="g-undo"><div class="gi-ico">✊</div><div><div class="gi-n">ANNULER</div><div class="gi-d">Poing + rotation poignet — supprimer dernier groupe</div></div></div>
         <div class="gi" id="g-clear"><div class="gi-ico">✌️</div><div><div class="gi-n">TOUT EFFACER</div><div class="gi-d">V sign — supprimer tous les cubes</div></div></div>
       </div>
     </div>
@@ -104,24 +118,21 @@ video{display:none}
       <button class="btn" onclick="undoGroup()">⟲ ANNULER</button>
       <button class="btn red" onclick="clearAll()">✕ TOUT EFFACER</button>
     </div>
-    <div class="hint">Autorisez l'accès caméra.<br>Pincez et étirez pour tracer des rangées de cubes dans l'espace 3D.</div>
+    <div class="hint">Pincez et étirez pour tracer des rangées de cubes dans l'espace 3D.</div>
   </div>
 </div>
 
+<!-- Load Three.js synchronously first -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
 <script>
-// ─── THREE.JS SETUP ───────────────────────────────────
+// ─── THREE.JS ─────────────────────────────────────────
 const canvas3d=document.getElementById('three-canvas');
 const renderer=new THREE.WebGLRenderer({canvas:canvas3d,antialias:true});
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setClearColor(0x030810,1);
-
 const scene=new THREE.Scene();
 const cam3=new THREE.PerspectiveCamera(60,1,.1,1000);
 cam3.position.set(0,6,13); cam3.lookAt(0,0,0);
-
 scene.add(new THREE.GridHelper(26,26,0x0a3a5e,0x061828));
 scene.add(new THREE.AmbientLight(0x223344,1.3));
 const dl=new THREE.DirectionalLight(0x88ccff,.9); dl.position.set(8,14,6); scene.add(dl);
@@ -130,45 +141,36 @@ scene.add(Object.assign(new THREE.DirectionalLight(0x00ff9d,.3),{position:new TH
 const vp=document.getElementById('viewport');
 const ovC=document.getElementById('hand-overlay');
 const ovX=ovC.getContext('2d');
-
 function resize(){
   const w=vp.clientWidth,h=vp.clientHeight;
   renderer.setSize(w,h); cam3.aspect=w/h; cam3.updateProjectionMatrix();
   ovC.width=w; ovC.height=h;
 }
-window.addEventListener('resize',resize);
+window.addEventListener('resize',resize); resize();
 
-// Cursor objects
 const curMat=new THREE.MeshBasicMaterial({color:0x00d4ff,transparent:true,opacity:.85});
 const curMesh=new THREE.Mesh(new THREE.SphereGeometry(.1,12,12),curMat);
 const ringMesh=new THREE.Mesh(new THREE.RingGeometry(.15,.19,32),new THREE.MeshBasicMaterial({color:0x00d4ff,side:THREE.DoubleSide,transparent:true,opacity:.5}));
 scene.add(curMesh); scene.add(ringMesh);
 let cur3=new THREE.Vector3();
 
-// ─── SCENE DATA ───────────────────────────────────────
-let cubeGroups=[]; // [{meshes:[],count:N}]
-let previewMeshes=[];
-let previewLine=null;
-const CSIZ=0.55, CSPC=0.62;
-
+// ─── SCENE DATA ──────────────────────────────────────
+let cubeGroups=[],previewMeshes=[],previewLine=null;
+const CSIZ=0.55,CSPC=0.62;
 const mkEdgeMat=()=>new THREE.LineBasicMaterial({color:0x00d4ff,transparent:true,opacity:.35});
 const mkCubeMat=()=>new THREE.MeshPhongMaterial({color:0x0d2a40,emissive:0x061420,specular:0x00d4ff,shininess:90});
 const previewMat=new THREE.MeshBasicMaterial({color:0x00ff9d,wireframe:true,transparent:true,opacity:.7});
 
 function linePts(a,b){
-  const dir=new THREE.Vector3().subVectors(b,a),len=dir.length();
-  const n=Math.max(1,Math.round(len/CSPC)+1);
+  const len=a.distanceTo(b),n=Math.max(1,Math.round(len/CSPC)+1);
   return Array.from({length:n},(_,i)=>new THREE.Vector3().lerpVectors(a,b,n===1?0:i/(n-1)));
 }
-
 function clearPreview(){
-  previewMeshes.forEach(m=>{scene.remove(m);m.geometry.dispose();});
-  previewMeshes=[];
-  if(previewLine){scene.remove(previewLine);previewLine.geometry.dispose();previewLine=null;}
+  previewMeshes.forEach(m=>{scene.remove(m);});previewMeshes=[];
+  if(previewLine){scene.remove(previewLine);previewLine=null;}
   document.getElementById('spv').textContent='--';
   document.getElementById('pinch-info').classList.remove('show');
 }
-
 function updatePreview(a,b){
   clearPreview();
   const pts=linePts(a,b);
@@ -181,51 +183,37 @@ function updatePreview(a,b){
   pi.textContent='⬡ '+pts.length+' CUBES — RELÂCHEZ POUR PLACER';
   pi.classList.add('show');
 }
-
 function buildCube(pos){
   const geo=new THREE.BoxGeometry(CSIZ,CSIZ,CSIZ);
   const m=new THREE.Mesh(geo,mkCubeMat());
   m.position.copy(pos);
-  const el=new THREE.LineSegments(new THREE.EdgesGeometry(geo),mkEdgeMat());
-  m.add(el); scene.add(m); return m;
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),mkEdgeMat()));
+  scene.add(m); return m;
 }
-
 function placeCubes(a,b){
-  const pts=linePts(a,b);
-  const meshes=pts.map(p=>buildCube(p));
-  cubeGroups.push({meshes,count:meshes.length});
-  updateUI();
+  const meshes=linePts(a,b).map(p=>buildCube(p));
+  cubeGroups.push({meshes,count:meshes.length}); updateUI();
 }
-
 function placeSingle(pos){
-  cubeGroups.push({meshes:[buildCube(pos)],count:1});
-  updateUI();
+  cubeGroups.push({meshes:[buildCube(pos)],count:1}); updateUI();
 }
-
 function undoGroup(){
   if(!cubeGroups.length)return;
-  const g=cubeGroups.pop();
-  g.meshes.forEach(m=>{scene.remove(m);m.geometry.dispose();});
-  updateUI();
-  curMat.color.setHex(0xff2d55);
+  cubeGroups.pop().meshes.forEach(m=>scene.remove(m));
+  updateUI(); curMat.color.setHex(0xff2d55);
   setTimeout(()=>curMat.color.setHex(0x00d4ff),400);
 }
-
 function clearAll(){
-  cubeGroups.forEach(g=>g.meshes.forEach(m=>{scene.remove(m);m.geometry.dispose();}));
-  cubeGroups=[];
-  clearPreview();
-  updateUI();
-  curMat.color.setHex(0xff2d55);
-  setTimeout(()=>curMat.color.setHex(0x00d4ff),600);
+  cubeGroups.forEach(g=>g.meshes.forEach(m=>scene.remove(m)));
+  cubeGroups=[]; clearPreview(); updateUI();
+  curMat.color.setHex(0xff2d55); setTimeout(()=>curMat.color.setHex(0x00d4ff),600);
 }
-
 function updateUI(){
   document.getElementById('sg').textContent=cubeGroups.length;
   document.getElementById('sc2').textContent=cubeGroups.reduce((s,g)=>s+g.count,0);
 }
 
-// ─── CAMERA ROTATION ─────────────────────────────────
+// Camera rotation
 let camAX=.35,camAY=0,camR=13,lastPalmPos=null;
 function updateCam(){
   cam3.position.set(camR*Math.sin(camAY)*Math.cos(camAX),camR*Math.sin(camAX),camR*Math.cos(camAY)*Math.cos(camAX));
@@ -233,27 +221,23 @@ function updateCam(){
 }
 updateCam();
 
-// ─── GESTURE DETECTION ───────────────────────────────
+// ─── GESTURE ─────────────────────────────────────────
 function detectGesture(lm){
   const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
   const up=(t,p)=>lm[t].y<lm[p].y;
-  if(d(lm[4],lm[8])<.07) return'PINCH';
+  if(d(lm[4],lm[8])<.07)return'PINCH';
   const iU=up(8,6),mU=up(12,10),rU=up(16,14),pU=up(20,18);
-  if(iU&&mU&&!rU&&!pU) return'VSHAPE';
-  if(iU&&!mU&&!rU&&!pU) return'CURSOR';
-  if(!iU&&!mU&&!rU&&!pU) return'FIST';
-  if(iU&&mU&&rU&&pU) return'OPEN';
+  if(iU&&mU&&!rU&&!pU)return'VSHAPE';
+  if(iU&&!mU&&!rU&&!pU)return'CURSOR';
+  if(!iU&&!mU&&!rU&&!pU)return'FIST';
+  if(iU&&mU&&rU&&pU)return'OPEN';
   return'CURSOR';
 }
-
 function getHandAngle(lm){return Math.atan2(lm[9].y-lm[0].y,lm[9].x-lm[0].x);}
-
 function lmTo3D(lm){return new THREE.Vector3((0.5-lm.x)*12,(0.5-lm.y)*8+1,-lm.z*8);}
 
-// State
-let pinchState='IDLE', pinchStart3D=null;
-let fistBaseAngle=null, fistUndoCD=0, vclearCD=0;
-let prevGesture='NONE';
+let pinchState='IDLE',pinchStart3D=null;
+let fistBase=null,fistCD=0,vclearCD=0,prevG='NONE';
 
 const GICONS={CURSOR:'☝️',PINCH:'🤏',VSHAPE:'✌️',OPEN:'🖐️',FIST:'✊',NONE:'✋'};
 const GMAP={CURSOR:'cursor',PINCH:'place',VSHAPE:'clear',OPEN:'rotate',FIST:'undo'};
@@ -262,160 +246,174 @@ const GCOL={PINCH:'gcol-green',VSHAPE:'gcol-red',FIST:'gcol-orange'};
 function setGUI(g,sub){
   document.getElementById('gicon').textContent=GICONS[g]||'✋';
   document.getElementById('gname').textContent=g;
-  if(sub!==undefined) document.getElementById('gsubname').textContent=sub||'';
+  if(sub!==undefined)document.getElementById('gsubname').textContent=sub||'';
   ['cursor','place','rotate','undo','clear'].forEach(id=>{
     const el=document.getElementById('g-'+id);
-    if(el) el.className='gi';
+    if(el)el.className='gi';
   });
   const id=GMAP[g];
-  if(id){
-    const el=document.getElementById('g-'+id);
-    if(el){el.classList.add('active');if(GCOL[g])el.classList.add(GCOL[g]);}
-  }
+  if(id){const el=document.getElementById('g-'+id);if(el){el.classList.add('active');if(GCOL[g])el.classList.add(GCOL[g]);}}
 }
 
 function processHand(lm,hand,score){
   document.getElementById('sh').textContent=hand;
   document.getElementById('sconf').textContent=(score*100).toFixed(0)+'%';
   const g=detectGesture(lm);
-
-  // Always move cursor
   cur3.lerp(lmTo3D(lm[8]),.4);
   curMesh.position.copy(cur3); ringMesh.position.copy(cur3);
+  if(fistCD>0)fistCD--;
+  if(vclearCD>0)vclearCD--;
 
-  if(fistUndoCD>0) fistUndoCD--;
-  if(vclearCD>0) vclearCD--;
-
-  // ── PINCH drag ──
   if(g==='PINCH'){
-    if(pinchState==='IDLE'){
-      pinchState='DRAGGING';
-      pinchStart3D=cur3.clone();
-      setGUI(g,'ÉTIREZ POUR DÉFINIR LA RANGÉE');
-    } else {
-      if(pinchStart3D.distanceTo(cur3)>0.2) updatePreview(pinchStart3D,cur3.clone());
-      setGUI(g,'RELÂCHEZ POUR PLACER');
-    }
-  } else if(prevGesture==='PINCH'&&pinchState==='DRAGGING'){
-    // On pinch release
+    if(pinchState==='IDLE'){pinchState='DRAGGING';pinchStart3D=cur3.clone();setGUI(g,'ÉTIREZ POUR DÉFINIR LA RANGÉE');}
+    else{if(pinchStart3D.distanceTo(cur3)>0.2)updatePreview(pinchStart3D,cur3.clone());setGUI(g,'RELÂCHEZ POUR PLACER');}
+  }else if(prevG==='PINCH'&&pinchState==='DRAGGING'){
     const dist=pinchStart3D?pinchStart3D.distanceTo(cur3):0;
-    if(dist>0.25) placeCubes(pinchStart3D,cur3.clone());
-    else placeSingle(pinchStart3D);
-    clearPreview(); pinchState='IDLE'; pinchStart3D=null;
-    setGUI(g,'PLACÉ!');
+    if(dist>0.25)placeCubes(pinchStart3D,cur3.clone());
+    else placeSingle(pinchStart3D||cur3.clone());
+    clearPreview();pinchState='IDLE';pinchStart3D=null;setGUI(g,'PLACÉ!');
   }
 
-  // ── Open palm → rotate ──
   if(g==='OPEN'){
-    if(lastPalmPos){
-      camAY+=(lm[9].x-lastPalmPos.x)*3;
-      camAX=Math.max(-1.2,Math.min(1.2,camAX-(lm[9].y-lastPalmPos.y)*2));
-      updateCam();
-    }
+    if(lastPalmPos){camAY+=(lm[9].x-lastPalmPos.x)*3;camAX=Math.max(-1.2,Math.min(1.2,camAX-(lm[9].y-lastPalmPos.y)*2));updateCam();}
     lastPalmPos={x:lm[9].x,y:lm[9].y};
-    if(g!=='PINCH') setGUI(g,'BOUGER LA MAIN POUR PIVOTER');
-  } else lastPalmPos=null;
+    setGUI(g,'BOUGER LA MAIN POUR PIVOTER');
+  }else lastPalmPos=null;
 
-  // ── Fist + rotation → undo ──
   if(g==='FIST'){
-    const angle=getHandAngle(lm);
-    if(fistBaseAngle===null) fistBaseAngle=angle;
-    else if(Math.abs(angle-fistBaseAngle)>0.45&&fistUndoCD===0){
-      undoGroup(); fistBaseAngle=angle; fistUndoCD=40;
-      setGUI(g,'ANNULÉ!');
-    } else { setGUI(g,'TOURNER LE POING POUR ANNULER'); }
-  } else fistBaseAngle=null;
+    const a=getHandAngle(lm);
+    if(fistBase===null)fistBase=a;
+    else if(Math.abs(a-fistBase)>0.45&&fistCD===0){undoGroup();fistBase=a;fistCD=40;setGUI(g,'ANNULÉ!');}
+    else setGUI(g,'TOURNER LE POING POUR ANNULER');
+  }else fistBase=null;
 
-  // ── V sign → clear all ──
   if(g==='VSHAPE'){
-    if(prevGesture!=='VSHAPE'&&vclearCD===0){
-      clearAll(); vclearCD=60; setGUI(g,'TOUT EFFACÉ!');
-    } else setGUI(g,'SUPPRIME TOUT');
+    if(prevG!=='VSHAPE'&&vclearCD===0){clearAll();vclearCD=60;setGUI(g,'TOUT EFFACÉ!');}
+    else setGUI(g,'SUPPRIME TOUT');
   }
-
-  // Cursor label
-  if(g==='CURSOR') setGUI(g,'DÉPLACER LE CURSEUR');
-
-  prevGesture=g;
+  if(g==='CURSOR')setGUI(g,'DÉPLACER LE CURSEUR');
+  prevG=g;
 }
 
-// ─── HAND OVERLAY ────────────────────────────────────
+// ─── OVERLAY ─────────────────────────────────────────
 const CONN=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-
 function drawOverlay(lm){
   ovX.clearRect(0,0,ovC.width,ovC.height);
-  const sx=x=>(1-x)*ovC.width, sy=y=>y*ovC.height;
-  // Dashed line from pinch start to index tip
+  const sx=x=>(1-x)*ovC.width,sy=y=>y*ovC.height;
   if(pinchState==='DRAGGING'&&pinchStart3D){
     const ndc=pinchStart3D.clone().project(cam3);
-    const px=(ndc.x*.5+.5)*ovC.width, py=(1-(ndc.y*.5+.5))*ovC.height;
-    ovX.save(); ovX.strokeStyle='rgba(0,255,157,.55)'; ovX.lineWidth=2; ovX.setLineDash([7,5]);
-    ovX.beginPath(); ovX.moveTo(px,py); ovX.lineTo(sx(lm[8].x),sy(lm[8].y)); ovX.stroke();
-    ovX.restore();
-    ovX.beginPath(); ovX.arc(px,py,7,0,Math.PI*2);
-    ovX.fillStyle='rgba(0,255,157,.35)'; ovX.fill();
-    ovX.strokeStyle='#00ff9d'; ovX.lineWidth=2; ovX.stroke();
+    const px=(ndc.x*.5+.5)*ovC.width,py=(1-(ndc.y*.5+.5))*ovC.height;
+    ovX.save();ovX.strokeStyle='rgba(0,255,157,.55)';ovX.lineWidth=2;ovX.setLineDash([7,5]);
+    ovX.beginPath();ovX.moveTo(px,py);ovX.lineTo(sx(lm[8].x),sy(lm[8].y));ovX.stroke();ovX.restore();
+    ovX.beginPath();ovX.arc(px,py,7,0,Math.PI*2);ovX.fillStyle='rgba(0,255,157,.3)';ovX.fill();
+    ovX.strokeStyle='#00ff9d';ovX.lineWidth=2;ovX.stroke();
   }
-  ovX.strokeStyle='rgba(0,212,255,.5)'; ovX.lineWidth=1.5;
+  ovX.strokeStyle='rgba(0,212,255,.5)';ovX.lineWidth=1.5;
   CONN.forEach(([a,b])=>{ovX.beginPath();ovX.moveTo(sx(lm[a].x),sy(lm[a].y));ovX.lineTo(sx(lm[b].x),sy(lm[b].y));ovX.stroke();});
   lm.forEach((p,i)=>{
-    ovX.beginPath(); ovX.arc(sx(p.x),sy(p.y),i===8?8:i===4?6:3.5,0,Math.PI*2);
-    ovX.fillStyle=i===8?'#00ff9d':i===4?'#ff6b35':'rgba(0,212,255,.85)'; ovX.fill();
+    ovX.beginPath();ovX.arc(sx(p.x),sy(p.y),i===8?8:i===4?6:3.5,0,Math.PI*2);
+    ovX.fillStyle=i===8?'#00ff9d':i===4?'#ff6b35':'rgba(0,212,255,.85)';ovX.fill();
   });
 }
 
-// ─── MEDIAPIPE ───────────────────────────────────────
-const video=document.getElementById('video');
-const camCv=document.getElementById('cam-canvas');
-const camCx=camCv.getContext('2d');
-
-const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${f}`});
-hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.72,minTrackingConfidence:.6});
-hands.onResults(r=>{
-  camCx.save(); camCx.translate(camCv.width,0); camCx.scale(-1,1);
-  camCx.drawImage(r.image,0,0,camCv.width,camCv.height); camCx.restore();
-  if(r.multiHandLandmarks?.length){
-    processHand(r.multiHandLandmarks[0],r.multiHandedness[0].label,r.multiHandedness[0].score);
-    drawOverlay(r.multiHandLandmarks[0]);
-  } else {
-    ovX.clearRect(0,0,ovC.width,ovC.height);
-    if(pinchState==='DRAGGING'){clearPreview();pinchState='IDLE';pinchStart3D=null;}
-    document.getElementById('sh').textContent='--'; document.getElementById('sconf').textContent='--';
-    setGUI('NONE',''); lastPalmPos=null; fistBaseAngle=null; prevGesture='NONE';
-  }
-});
-
-const mpCam=new Camera(video,{onFrame:async()=>await hands.send({image:video}),width:640,height:480});
-
-// ─── INIT ────────────────────────────────────────────
-async function init(){
-  const steps=[['CHARGEMENT MEDIAPIPE...',15],['INIT THREE.JS...',40],['MODÈLES IA...',70],['ACCÈS CAMÉRA...',90],['SYSTÈME PRÊT',100]];
-  for(const[msg,pct]of steps){
-    document.getElementById('lmsg').textContent=msg;
-    document.getElementById('lbi').style.width=pct+'%';
-    await new Promise(r=>setTimeout(r,500));
-  }
-  try{
-    await mpCam.start();
-    const ls=document.getElementById('loading'); ls.style.opacity='0';
-    setTimeout(()=>ls.style.display='none',800);
-    resize();
-  }catch(e){document.getElementById('lmsg').textContent='ERREUR: '+e.message;}
-}
-init();
-
 // ─── RENDER LOOP ─────────────────────────────────────
 const clock=new THREE.Clock();
-function animate(){
+(function animate(){
   requestAnimationFrame(animate);
   const t=clock.getElapsedTime();
-  ringMesh.rotation.z+=.03;
-  ringMesh.rotation.x=Math.sin(t)*.2;
+  ringMesh.rotation.z+=.03;ringMesh.rotation.x=Math.sin(t)*.2;
   curMesh.scale.setScalar(.9+.1*Math.sin(t*5));
   previewMeshes.forEach((m,i)=>m.scale.setScalar(.95+.05*Math.sin(t*4+i*.5)));
   renderer.render(scene,cam3);
+})();
+
+// ─── START ───────────────────────────────────────────
+function log(msg){document.getElementById('lmsg').textContent=msg;document.getElementById('lmsg').style.display='block';}
+function setProgress(p){document.getElementById('lbi').style.width=p+'%';document.getElementById('lbo').style.display='block';}
+function showError(msg){
+  document.getElementById('lerr').textContent='ERREUR: '+msg;
+  document.getElementById('lerr').style.display='block';
+  document.getElementById('retry-btn').style.display='block';
+  document.getElementById('lmsg').style.display='none';
+  document.getElementById('lbo').style.display='none';
 }
-animate();
+
+async function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=src; s.crossOrigin='anonymous';
+    s.onload=res;
+    s.onerror=()=>rej(new Error('Impossible de charger: '+src));
+    document.head.appendChild(s);
+  });
+}
+
+async function startApp(){
+  document.getElementById('start-btn').style.display='none';
+  try{
+    log('Chargement MediaPipe Hands...');
+    setProgress(10);
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js');
+    setProgress(30);
+    log('Chargement Camera Utils...');
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js');
+    setProgress(50);
+    log('Initialisation du modèle de détection...');
+
+    const video=document.getElementById('video');
+    const camCv=document.getElementById('cam-canvas');
+    const camCx=camCv.getContext('2d');
+
+    const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${f}`});
+    hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:.72,minTrackingConfidence:.6});
+
+    hands.onResults(r=>{
+      camCx.save();camCx.translate(camCv.width,0);camCx.scale(-1,1);
+      camCx.drawImage(r.image,0,0,camCv.width,camCv.height);camCx.restore();
+      if(r.multiHandLandmarks?.length){
+        processHand(r.multiHandLandmarks[0],r.multiHandedness[0].label,r.multiHandedness[0].score);
+        drawOverlay(r.multiHandLandmarks[0]);
+      }else{
+        ovX.clearRect(0,0,ovC.width,ovC.height);
+        if(pinchState==='DRAGGING'){clearPreview();pinchState='IDLE';pinchStart3D=null;}
+        document.getElementById('sh').textContent='--';document.getElementById('sconf').textContent='--';
+        setGUI('NONE','');lastPalmPos=null;fistBase=null;prevG='NONE';
+      }
+    });
+
+    setProgress(65);
+    log('Accès à la caméra...');
+
+    // Request camera first
+    const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
+    video.srcObject=stream;
+    await new Promise((res,rej)=>{video.onloadedmetadata=res;video.onerror=rej;setTimeout(rej,5000,new Error('timeout video'));});
+
+    setProgress(80);
+    log('Chargement du modèle IA (première fois ~10s)...');
+
+    // Use Camera util
+    const mpCam=new Camera(video,{
+      onFrame:async()=>{await hands.send({image:video});},
+      width:640,height:480
+    });
+
+    // Override avec le stream existant pour éviter un double accès
+    await mpCam.start();
+
+    setProgress(100);
+    log('Système prêt!');
+    await new Promise(r=>setTimeout(r,600));
+
+    const ls=document.getElementById('loading');
+    ls.style.transition='opacity .8s';ls.style.opacity='0';
+    setTimeout(()=>ls.style.display='none',800);
+
+  }catch(e){
+    console.error(e);
+    showError(e.message||String(e));
+  }
+}
 </script>
 </body>
 </html>
